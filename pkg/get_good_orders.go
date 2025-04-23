@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	warframe_market "github.com/freephoenix888/warframe-market-prime-trash-buyer-go-lib/internal/warframe_market"
-	warframe_market_models "github.com/freephoenix888/warframe-market-prime-trash-buyer-go-lib/internal/warframe_market/models"
+	warframe_market "github.com/LiKissDmd/warframe-market-prime-trash-buyer-go-lib/internal/warframe_market"
+	warframe_market_models "github.com/LiKissDmd/warframe-market-prime-trash-buyer-go-lib/internal/warframe_market/models"
 )
 
 func GetProfitableOrders() ([]OrderWithItem, error) {
