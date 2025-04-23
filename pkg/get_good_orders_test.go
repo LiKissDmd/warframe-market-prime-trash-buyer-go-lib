@@ -5,14 +5,11 @@ import (
 )
 
 func TestGetProfitableOrders(t *testing.T) {
-	profitableOrders, err := GetProfitableOrders()
-
+	orders, err := GetProfitableOrders()
 	if err != nil {
-		t.Errorf("GetProfitableOrders() returned an error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if profitableOrders == nil {
-		t.Error("GetProfitableOrders() returned nil profitableOrders slice")
+	if orders == nil {
+		t.Fatal("expected non-nil slice, got nil")
 	}
-
 }

@@ -12,79 +12,82 @@ import (
 )
 
 func GetProfitableOrders() ([]OrderWithItem, error) {
-	itemsResponseEncoded, err := http.Get("https://api.warframe.market/v1/items")
+	items, err := fetchItems()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get items info: %s", err)
-	}
-	defer itemsResponseEncoded.Body.Close()
-
-	var itemsResponse warframe_market_models.ItemsResponse
-	if err := json.NewDecoder(itemsResponseEncoded.Body).Decode(&itemsResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode JSON: %s", err)
-	}
-	items := itemsResponse.Payload.Items
-
-	var itemsToBuy []warframe_market_models.ItemsItem
-	for _, item := range items {
-		if slices.Contains(ProfitableItemNames, item.ItemName) {
-			itemsToBuy = append(itemsToBuy, item)
-		}
+		return nil, err
 	}
 
+	itemsToBuy := filterItems(items, ProfitableItemNames)
 	profitableOrders := make([]OrderWithItem, 0, 10)
-
 	rateLimiter := time.NewTicker(time.Second / warframe_market.MaxRequestsPerSecond)
 	defer rateLimiter.Stop()
 
-	for _, itemToBuy := range itemsToBuy {
+	for _, item := range itemsToBuy {
 		<-rateLimiter.C
 
-		ordersResponseEncoded, err := http.Get(fmt.Sprintf("https://api.warframe.market/v1/items/%s/orders", itemToBuy.URLName))
+		orders, err := fetchOrders(item.URLName)
 		if err != nil {
-			return nil, fmt.Errorf("error getting orders for %s: %s", itemToBuy.ItemName, err)
+			return nil, fmt.Errorf("error getting orders for %s: %w", item.ItemName, err)
 		}
-		defer ordersResponseEncoded.Body.Close()
-
-		var ordersResponse warframe_market_models.OrdersResponse
-		if err := json.NewDecoder(ordersResponseEncoded.Body).Decode(&ordersResponse); err != nil {
-			return nil, fmt.Errorf("failed to decode JSON: %s", err)
-		}
-
-		orders := ordersResponse.Payload.Orders
 
 		for _, order := range orders {
-			isSellOrder := order.OrderType.IsSell()
-			if !isSellOrder {
-				continue
+			if isOrderProfitable(order) {
+				profitableOrders = append(profitableOrders, OrderWithItem{
+					Order: order,
+					Item:  item,
+				})
 			}
-
-			isIngame := order.User.Status.IsIngame()
-			if !isIngame {
-				continue
-			}
-
-			isPc := order.Platform.IsPC()
-			if !isPc {
-				continue
-			}
-
-			isGoodQuantity := order.Quantity >= 3
-			if !isGoodQuantity {
-				continue
-			}
-
-			isGoodPrice := order.Platinum <= 4
-			if !isGoodPrice {
-				continue
-			}
-
-			orderWithItem := OrderWithItem{
-				Order: order,
-				Item:  itemToBuy,
-			}
-			profitableOrders = append(profitableOrders, orderWithItem)
 		}
 	}
 
 	return profitableOrders, nil
+}
+
+func fetchItems() ([]warframe_market_models.ItemsItem, error) {
+	resp, err := http.Get("https://api.warframe.market/v1/items")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get items info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result warframe_market_models.ItemsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON: %w", err)
+	}
+
+	return result.Payload.Items, nil
+}
+
+func fetchOrders(itemURLName string) ([]warframe_market_models.Order, error) {
+	url := fmt.Sprintf("https://api.warframe.market/v1/items/%s/orders", itemURLName)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result warframe_market_models.OrdersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Payload.Orders, nil
+}
+
+func filterItems(items []warframe_market_models.ItemsItem, names []string) []warframe_market_models.ItemsItem {
+	var result []warframe_market_models.ItemsItem
+	for _, item := range items {
+		if slices.Contains(names, item.ItemName) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func isOrderProfitable(order warframe_market_models.Order) bool {
+	return order.OrderType.IsSell() &&
+		order.User.Status.IsIngame() &&
+		order.Platform.IsPC() &&
+		order.Quantity >= 3 &&
+		order.Platinum <= 4
 }
